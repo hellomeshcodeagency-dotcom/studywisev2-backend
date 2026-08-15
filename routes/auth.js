@@ -8,7 +8,7 @@ function signToken(id) {
   return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRES_IN || '30d' })
 }
 
-// GET /api/auth/setup — return universities/faculties/depts/levels for register form
+// GET /api/auth/setup
 router.get('/setup', async (req, res) => {
   try {
     const unis  = await pool.query(`SELECT id, name, short_name FROM universities WHERE active = true ORDER BY name`)
@@ -25,21 +25,23 @@ router.get('/setup', async (req, res) => {
 router.post('/register', async (req, res) => {
   try {
     const { name, email, password, university_id, faculty_id, department_id, level_id, matric_no } = req.body
-
     if (!name || !email || !password) return res.status(400).json({ error: 'Name, email and password are required' })
     if (password.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' })
-    if (!university_id || !faculty_id || !department_id || !level_id) {
+    if (!university_id || !faculty_id || !department_id || !level_id)
       return res.status(400).json({ error: 'Please select your university, faculty, department and level' })
-    }
 
     const exists = await pool.query(`SELECT id FROM users WHERE email = $1`, [email.toLowerCase()])
     if (exists.rows.length > 0) return res.status(400).json({ error: 'Email already registered' })
 
+    // check if this is the designated admin email
+    const isAdmin = email.toLowerCase().trim() === (process.env.ADMIN_EMAIL || '').toLowerCase().trim()
+
     const hash = await bcrypt.hash(password, 12)
     const result = await pool.query(`
-      INSERT INTO users (name, email, password_hash, university_id, faculty_id, department_id, level_id, matric_no)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id, name, email, role, university_id, faculty_id, department_id, level_id`,
-      [name.trim(), email.toLowerCase().trim(), hash, university_id, faculty_id, department_id, level_id, matric_no || null])
+      INSERT INTO users (name, email, password_hash, university_id, faculty_id, department_id, level_id, matric_no, is_admin)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      RETURNING id, name, email, is_admin, university_id, faculty_id, department_id, level_id, matric_no, study_streak`,
+      [name.trim(), email.toLowerCase().trim(), hash, university_id, faculty_id, department_id, level_id, matric_no || null, isAdmin])
 
     const user  = result.rows[0]
     const token = signToken(user.id)
@@ -56,10 +58,20 @@ router.post('/login', async (req, res) => {
     const { email, password } = req.body
     if (!email || !password) return res.status(400).json({ error: 'Email and password required' })
 
-    const result = await pool.query(
-      `SELECT id, name, email, password_hash, role, university_id, faculty_id, department_id, level_id,
-              matric_no, avatar_url, study_streak, is_suspended
-       FROM users WHERE email = $1`, [email.toLowerCase()])
+    const result = await pool.query(`
+      SELECT u.id, u.name, u.email, u.password_hash, u.is_admin,
+             u.matric_no, u.avatar_url, u.study_streak, u.is_suspended,
+             u.university_id, u.faculty_id, u.department_id, u.level_id,
+             un.name as university_name, un.short_name as university_short,
+             f.name as faculty_name, f.short_name as faculty_short,
+             d.name as department_name, d.short_name as department_short,
+             l.name as level_name
+      FROM users u
+      LEFT JOIN universities un ON u.university_id = un.id
+      LEFT JOIN faculties f     ON u.faculty_id = f.id
+      LEFT JOIN departments d   ON u.department_id = d.id
+      LEFT JOIN levels l        ON u.level_id = l.id
+      WHERE u.email = $1`, [email.toLowerCase()])
 
     if (result.rows.length === 0) return res.status(400).json({ error: 'Invalid email or password' })
 
@@ -82,7 +94,7 @@ router.post('/login', async (req, res) => {
 router.get('/me', authGuard, async (req, res) => {
   try {
     const result = await pool.query(`
-      SELECT u.id, u.name, u.email, u.role, u.matric_no, u.avatar_url, u.study_streak, u.created_at,
+      SELECT u.id, u.name, u.email, u.is_admin, u.matric_no, u.avatar_url, u.study_streak, u.created_at,
              un.name as university_name, un.short_name as university_short,
              f.name as faculty_name, f.short_name as faculty_short,
              d.name as department_name, d.short_name as department_short,
