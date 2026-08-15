@@ -1,18 +1,10 @@
 const router = require('express').Router()
 const pool   = require('../db')
 const { authGuard, adminOnly } = require('../middleware/authGuard')
-const { upload, deleteFile }   = require('../services/cloudinary')
+const { upload, uploadToCloudinary, deleteFile } = require('../services/cloudinary')
 
 // POST /api/uploads — student uploads a file
-router.post('/', authGuard, (req, res, next) => {
-  upload.single('file')(req, res, (err) => {
-    if (err) {
-      console.error('Multer/Cloudinary error:', err)
-      return res.status(500).json({ error: err.message || 'File upload failed. Check Cloudinary config.' })
-    }
-    next()
-  })
-}, async (req, res) => {
+router.post('/', authGuard, upload.single('file'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' })
 
@@ -22,17 +14,20 @@ router.post('/', authGuard, (req, res, next) => {
     const validTypes = ['past_question', 'notes', 'summary', 'textbook']
     if (!validTypes.includes(type)) return res.status(400).json({ error: 'Invalid upload type' })
 
+    // Upload buffer to Cloudinary
+    const cloudResult = await uploadToCloudinary(req.file.buffer, req.file.originalname)
+
     const result = await pool.query(`
       INSERT INTO uploads (user_id, course_id, type, title, description, file_url, public_id, file_size, semester, session)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
       [req.user.id, course_id || null, type, title.trim(), description?.trim() || null,
-       req.file.path, req.file.filename, req.file.size || null,
+       cloudResult.secure_url, cloudResult.public_id, req.file.size || null,
        semester ? parseInt(semester) : null, session?.trim() || null])
 
-    res.status(201).json({ upload: result.rows[0], message: 'Upload submitted for review. You\'ll be notified when it\'s approved.' })
+    res.status(201).json({ upload: result.rows[0], message: "Upload submitted for review." })
   } catch (err) {
-    console.error('Upload DB error:', err)
-    res.status(500).json({ error: 'Upload failed. Try again.' })
+    console.error('Upload error:', err)
+    res.status(500).json({ error: err.message || 'Upload failed. Try again.' })
   }
 })
 
