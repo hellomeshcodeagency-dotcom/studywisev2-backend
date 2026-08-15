@@ -11,10 +11,9 @@ cloudinary.config({
 const storage = new CloudinaryStorage({
   cloudinary,
   params: async (req, file) => ({
-    folder:         'studiwise/uploads',
-    resource_type:  'raw', // for PDFs
-    allowed_formats: ['pdf', 'doc', 'docx', 'pptx', 'txt'],
-    public_id:      `${Date.now()}-${file.originalname.replace(/\s+/g, '-')}`,
+    folder:        'studiwise/uploads',
+    resource_type: 'raw',
+    public_id:     `${Date.now()}-${file.originalname.replace(/\s+/g, '-')}`,
   }),
 })
 
