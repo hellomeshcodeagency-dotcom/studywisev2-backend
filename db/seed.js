@@ -196,17 +196,17 @@ async function seed() {
       },
     ]
 
-    // Insert all courses
+    // Wipe existing courses for this level and re-insert cleanly (prevents duplicates on restart)
+    await pool.query('DELETE FROM courses WHERE level_id = $1', [levelId])
     for (const course of [...semester1, ...semester2]) {
       const sem = semester1.includes(course) ? 1 : 2
-      await pool.query(`
-        INSERT INTO courses (level_id, code, title, credit_units, semester, description, objectives, outline, textbooks)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-        ON CONFLICT DO NOTHING`,
+      await pool.query(
+        'INSERT INTO courses (level_id, code, title, credit_units, semester, description, objectives, outline, textbooks) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)',
         [levelId, course.code, course.title, course.credit_units, sem,
          course.description, JSON.stringify(course.objectives),
          JSON.stringify(course.outline), JSON.stringify(course.textbooks)])
     }
+    console.log('Courses reset to 15')
 
     // Admin user
     const hash = await bcrypt.hash(process.env.ADMIN_PASSWORD || 'admin123', 12)
