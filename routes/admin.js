@@ -37,7 +37,7 @@ router.get('/stats', async (req, res) => {
 router.get('/users', async (req, res) => {
   try {
     const result = await pool.query(`
-      SELECT u.id, u.name, u.email, u.is_admin, u.matric_no, u.study_streak,
+      SELECT u.id, u.name, u.email, u.role, u.matric_no, u.study_streak,
              u.is_suspended, u.created_at,
              d.name as department_name, l.name as level_name
       FROM users u
@@ -51,11 +51,12 @@ router.get('/users', async (req, res) => {
   }
 })
 
-// PATCH /api/admin/users/:id — toggle is_admin
+// PATCH /api/admin/users/:id — toggle admin role
 router.patch('/users/:id', async (req, res) => {
   try {
     const { is_admin } = req.body
-    await pool.query(`UPDATE users SET is_admin = $1 WHERE id = $2`, [is_admin, req.params.id])
+    const role = is_admin ? 'admin' : 'student'
+    await pool.query(`UPDATE users SET role = $1 WHERE id = $2`, [role, req.params.id])
     res.json({ message: 'User updated' })
   } catch (err) {
     console.error(err)
