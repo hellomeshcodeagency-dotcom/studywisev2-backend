@@ -22,9 +22,15 @@ const upload = multer({
 })
 
 async function uploadToCloudinary(buffer, originalname) {
+  const safeName = originalname.replace(/\s+/g, '-')
   return new Promise((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
-      { resource_type: 'raw' },
+      {
+        resource_type: 'raw',
+        public_id: `studiwise/uploads/${Date.now()}-${safeName}`,
+        use_filename: true,
+        unique_filename: false,
+      },
       (error, result) => {
         if (error) return reject(error)
         resolve(result)
