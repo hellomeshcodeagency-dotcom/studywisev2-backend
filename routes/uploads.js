@@ -77,6 +77,37 @@ router.patch('/:id/download', authGuard, async (req, res) => {
 
 // ── ADMIN ROUTES ──────────────────────────────────────
 
+// GET /api/uploads/admin/all — all uploads
+router.get('/admin/all', authGuard, adminOnly, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT u.*, c.code as course_code, us.name as uploader_name
+      FROM uploads u
+      LEFT JOIN courses c ON u.course_id = c.id
+      LEFT JOIN users us ON u.user_id = us.id
+      ORDER BY u.created_at DESC`)
+    res.json({ uploads: result.rows })
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' })
+  }
+})
+
+// DELETE /api/uploads/admin/all — clear all uploads
+router.delete('/admin/all', authGuard, adminOnly, async (req, res) => {
+  try {
+    const { v2: cloudinary } = require('cloudinary')
+    const rows = await pool.query(`SELECT public_id FROM uploads WHERE public_id IS NOT NULL`)
+    for (const r of rows.rows) {
+      await cloudinary.uploader.destroy(r.public_id, { resource_type: 'raw' }).catch(() => {})
+    }
+    await pool.query(`DELETE FROM uploads`)
+    res.json({ message: 'All uploads deleted' })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Server error' })
+  }
+})
+
 // GET /api/uploads/admin/pending
 router.get('/admin/pending', authGuard, adminOnly, async (req, res) => {
   try {
