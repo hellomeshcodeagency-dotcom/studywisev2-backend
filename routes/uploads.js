@@ -4,7 +4,15 @@ const { authGuard, adminOnly } = require('../middleware/authGuard')
 const { upload, deleteFile }   = require('../services/cloudinary')
 
 // POST /api/uploads — student uploads a file
-router.post('/', authGuard, upload.single('file'), async (req, res) => {
+router.post('/', authGuard, (req, res, next) => {
+  upload.single('file')(req, res, (err) => {
+    if (err) {
+      console.error('Multer/Cloudinary error:', err)
+      return res.status(500).json({ error: err.message || 'File upload failed. Check Cloudinary config.' })
+    }
+    next()
+  })
+}, async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' })
 
@@ -23,7 +31,7 @@ router.post('/', authGuard, upload.single('file'), async (req, res) => {
 
     res.status(201).json({ upload: result.rows[0], message: 'Upload submitted for review. You\'ll be notified when it\'s approved.' })
   } catch (err) {
-    console.error('Upload error:', err)
+    console.error('Upload DB error:', err)
     res.status(500).json({ error: 'Upload failed. Try again.' })
   }
 })
