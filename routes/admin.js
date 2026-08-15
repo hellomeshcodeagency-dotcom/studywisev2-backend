@@ -7,31 +7,28 @@ router.use(authGuard, adminOnly)
 // GET /api/admin/stats
 router.get('/stats', async (req, res) => {
   try {
-    const [users, uploads, pendingUploads, conversations, courses] = await Promise.all([
-      pool.query(`SELECT COUNT(*) FROM users WHERE role = 'student'`),
-      pool.query(`SELECT COUNT(*) FROM uploads WHERE status = 'approved'`),
+    const [users, allUploads, pendingUploads, approvedUploads, rejectedUploads, conversations, courses, gpaRecords] = await Promise.all([
+      pool.query(`SELECT COUNT(*) FROM users`),
+      pool.query(`SELECT COUNT(*) FROM uploads`),
       pool.query(`SELECT COUNT(*) FROM uploads WHERE status = 'pending'`),
+      pool.query(`SELECT COUNT(*) FROM uploads WHERE status = 'approved'`),
+      pool.query(`SELECT COUNT(*) FROM uploads WHERE status = 'rejected'`),
       pool.query(`SELECT COUNT(*) FROM ai_conversations`),
-      pool.query(`SELECT COUNT(*) FROM courses WHERE active = true`),
+      pool.query(`SELECT COUNT(*) FROM courses`),
+      pool.query(`SELECT COUNT(*) FROM gpa_records`),
     ])
-    const recentUsers = await pool.query(`
-      SELECT u.id, u.name, u.email, u.created_at, d.name as dept, l.name as level
-      FROM users u
-      LEFT JOIN departments d ON u.department_id = d.id
-      LEFT JOIN levels l ON u.level_id = l.id
-      WHERE u.role = 'student' ORDER BY u.created_at DESC LIMIT 5`)
-
     res.json({
-      stats: {
-        total_students:   parseInt(users.rows[0].count),
-        approved_uploads: parseInt(uploads.rows[0].count),
-        pending_uploads:  parseInt(pendingUploads.rows[0].count),
-        ai_conversations: parseInt(conversations.rows[0].count),
-        active_courses:   parseInt(courses.rows[0].count),
-      },
-      recent_users: recentUsers.rows,
+      total_users:       parseInt(users.rows[0].count),
+      total_uploads:     parseInt(allUploads.rows[0].count),
+      pending_uploads:   parseInt(pendingUploads.rows[0].count),
+      approved_uploads:  parseInt(approvedUploads.rows[0].count),
+      rejected_uploads:  parseInt(rejectedUploads.rows[0].count),
+      total_chats:       parseInt(conversations.rows[0].count),
+      total_courses:     parseInt(courses.rows[0].count),
+      total_gpa_records: parseInt(gpaRecords.rows[0].count),
     })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ error: 'Server error' })
   }
 })
@@ -39,38 +36,29 @@ router.get('/stats', async (req, res) => {
 // GET /api/admin/users
 router.get('/users', async (req, res) => {
   try {
-    const { page = 1, limit = 20, search } = req.query
-    const offset = (page - 1) * limit
-    let query = `
-      SELECT u.id, u.name, u.email, u.role, u.matric_no, u.study_streak,
+    const result = await pool.query(`
+      SELECT u.id, u.name, u.email, u.is_admin, u.matric_no, u.study_streak,
              u.is_suspended, u.created_at,
-             d.name as department, l.name as level
+             d.name as department_name, l.name as level_name
       FROM users u
       LEFT JOIN departments d ON u.department_id = d.id
       LEFT JOIN levels l ON u.level_id = l.id
-      WHERE u.role = 'student'`
-    const params = []
-    if (search) {
-      params.push(`%${search.toLowerCase()}%`)
-      query += ` AND (LOWER(u.name) LIKE $${params.length} OR LOWER(u.email) LIKE $${params.length})`
-    }
-    query += ` ORDER BY u.created_at DESC LIMIT $${params.length+1} OFFSET $${params.length+2}`
-    params.push(limit, offset)
-    const result = await pool.query(query, params)
-    const total  = await pool.query(`SELECT COUNT(*) FROM users WHERE role = 'student'`)
-    res.json({ users: result.rows, total: parseInt(total.rows[0].count) })
+      ORDER BY u.created_at DESC`)
+    res.json(result.rows)
   } catch (err) {
+    console.error(err)
     res.status(500).json({ error: 'Server error' })
   }
 })
 
-// PATCH /api/admin/users/:id/suspend
-router.patch('/users/:id/suspend', async (req, res) => {
+// PATCH /api/admin/users/:id — toggle is_admin
+router.patch('/users/:id', async (req, res) => {
   try {
-    const { suspended } = req.body
-    await pool.query(`UPDATE users SET is_suspended = $1 WHERE id = $2`, [suspended, req.params.id])
-    res.json({ message: suspended ? 'User suspended' : 'User unsuspended' })
+    const { is_admin } = req.body
+    await pool.query(`UPDATE users SET is_admin = $1 WHERE id = $2`, [is_admin, req.params.id])
+    res.json({ message: 'User updated' })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ error: 'Server error' })
   }
 })
@@ -78,30 +66,41 @@ router.patch('/users/:id/suspend', async (req, res) => {
 // DELETE /api/admin/users/:id
 router.delete('/users/:id', async (req, res) => {
   try {
-    await pool.query(`DELETE FROM users WHERE id = $1 AND role = 'student'`, [req.params.id])
+    await pool.query(`DELETE FROM users WHERE id = $1`, [req.params.id])
     res.json({ message: 'User deleted' })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ error: 'Server error' })
   }
 })
 
-// PATCH /api/admin/courses/:id — update course info
+// GET /api/admin/courses
+router.get('/courses', async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT id, code, title, description, credit_units, semester
+      FROM courses ORDER BY semester, code`)
+    res.json(result.rows)
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Server error' })
+  }
+})
+
+// PATCH /api/admin/courses/:id
 router.patch('/courses/:id', async (req, res) => {
   try {
-    const { lecturer, description, objectives, outline, textbooks } = req.body
+    const { title, description, credit_units } = req.body
     await pool.query(`
       UPDATE courses SET
-        lecturer    = COALESCE($1, lecturer),
-        description = COALESCE($2, description),
-        objectives  = COALESCE($3, objectives),
-        outline     = COALESCE($4, outline),
-        textbooks   = COALESCE($5, textbooks)
-      WHERE id = $6`,
-      [lecturer, description, objectives ? JSON.stringify(objectives) : null,
-       outline ? JSON.stringify(outline) : null,
-       textbooks ? JSON.stringify(textbooks) : null, req.params.id])
+        title        = COALESCE($1, title),
+        description  = COALESCE($2, description),
+        credit_units = COALESCE($3, credit_units)
+      WHERE id = $4`,
+      [title, description, credit_units, req.params.id])
     res.json({ message: 'Course updated' })
   } catch (err) {
+    console.error(err)
     res.status(500).json({ error: 'Server error' })
   }
 })
