@@ -24,7 +24,7 @@ const upload = multer({
 async function uploadToCloudinary(buffer, originalname) {
   return new Promise((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
-      { resource_type: 'raw', folder: 'studiwise/uploads' },
+      { resource_type: 'raw' },
       (error, result) => {
         if (error) return reject(error)
         resolve(result)
