@@ -4,8 +4,9 @@ const pool = require('../db')
 async function authGuard(req, res, next) {
   try {
     const header = req.headers.authorization
-    if (!header?.startsWith('Bearer ')) return res.status(401).json({ error: 'No token provided' })
-    const token   = header.split(' ')[1]
+    const queryToken = req.query.token
+    if (!header?.startsWith('Bearer ') && !queryToken) return res.status(401).json({ error: 'No token provided' })
+    const token = queryToken || header.split(' ')[1]
     const decoded = jwt.verify(token, process.env.JWT_SECRET)
     const result  = await pool.query(
       `SELECT id, name, email, role, university_id, faculty_id, department_id, level_id,
