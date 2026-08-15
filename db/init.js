@@ -36,7 +36,8 @@ async function initDB() {
       description TEXT, lecturer VARCHAR(200),
       objectives JSONB DEFAULT '[]', outline JSONB DEFAULT '[]',
       textbooks JSONB DEFAULT '[]', active BOOLEAN DEFAULT true,
-      created_at TIMESTAMPTZ DEFAULT NOW())`)
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE(level_id, code))`)
 
     await pool.query(`CREATE TABLE IF NOT EXISTS users (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
