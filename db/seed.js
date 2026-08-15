@@ -66,18 +66,26 @@ async function seed() {
       { code:'GST 107', title:'History and Philosophy of Science', credit_units:2, description:'Historical development of science and philosophical foundations of scientific inquiry.', objectives:['Understand scientific revolutions','Apply scientific method','Appreciate ethics in science'], outline:['Ancient Science','Scientific Revolution','Modern Physics','Philosophy of Science','Scientific Method','Ethics in Science','Science and Society','Nigerian Science History'], textbooks:['The Structure of Scientific Revolutions by Kuhn'] },
     ]
 
-    for (const course of semester1) {
-      await pool.query(
-        `INSERT INTO courses (level_id, code, title, credit_units, semester, description, objectives, outline, textbooks) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-        [levelId, course.code, course.title, course.credit_units, 1, course.description, JSON.stringify(course.objectives), JSON.stringify(course.outline), JSON.stringify(course.textbooks)])
-    }
-    for (const course of semester2) {
-      await pool.query(
-        `INSERT INTO courses (level_id, code, title, credit_units, semester, description, objectives, outline, textbooks) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-        [levelId, course.code, course.title, course.credit_units, 2, course.description, JSON.stringify(course.objectives), JSON.stringify(course.outline), JSON.stringify(course.textbooks)])
-    }
+    // Only insert courses that don't already exist — never delete to preserve upload links
+    const existing = await pool.query(`SELECT code FROM courses WHERE level_id = $1`, [levelId])
+    const existingCodes = new Set(existing.rows.map(r => r.code))
 
-    console.log(`✅ 15 courses inserted for level ${levelId}`)
+    const allCourses = [
+      ...semester1.map(c => ({ ...c, sem: 1 })),
+      ...semester2.map(c => ({ ...c, sem: 2 })),
+    ]
+
+    let inserted = 0
+    for (const course of allCourses) {
+      if (!existingCodes.has(course.code)) {
+        await pool.query(
+          `INSERT INTO courses (level_id, code, title, credit_units, semester, description, objectives, outline, textbooks) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+          [levelId, course.code, course.title, course.credit_units, course.sem, course.description,
+           JSON.stringify(course.objectives), JSON.stringify(course.outline), JSON.stringify(course.textbooks)])
+        inserted++
+      }
+    }
+    console.log(`✅ Courses: ${existingCodes.size} existing, ${inserted} inserted`)
 
     // Admin user
     const hash = await bcrypt.hash(process.env.ADMIN_PASSWORD || 'admin123', 12)
