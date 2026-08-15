@@ -30,6 +30,7 @@ async function uploadToCloudinary(buffer, originalname) {
         public_id: `studiwise/uploads/${Date.now()}-${safeName}`,
         use_filename: true,
         unique_filename: false,
+        access_mode: 'public',
       },
       (error, result) => {
         if (error) return reject(error)
