@@ -7,30 +7,20 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 })
 
-// Memory storage — no Cloudinary involvement at multer stage
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 20 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     const ext = file.originalname.split('.').pop().toLowerCase()
-    if (['pdf','doc','docx','pptx','txt'].includes(ext)) {
-      cb(null, true)
-    } else {
-      cb(new Error('Only PDF, Word, PowerPoint and TXT files are allowed'))
-    }
+    if (['pdf','doc','docx','pptx','txt'].includes(ext)) cb(null, true)
+    else cb(new Error('Only PDF, Word, PowerPoint and TXT files are allowed'))
   },
 })
 
 async function uploadToCloudinary(buffer, originalname) {
-  const safeName = originalname.replace(/\s+/g, '-')
   return new Promise((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
-      {
-        resource_type: 'raw',
-        type: 'upload',
-        access_mode: 'public',
-        public_id: `studiwise/uploads/${Date.now()}-${safeName}`,
-      },
+      { resource_type: 'auto' },
       (error, result) => {
         if (error) return reject(error)
         resolve(result)
@@ -42,7 +32,8 @@ async function uploadToCloudinary(buffer, originalname) {
 
 async function deleteFile(publicId) {
   try {
-    await cloudinary.uploader.destroy(publicId, { resource_type: 'raw' })
+    await cloudinary.uploader.destroy(publicId, { resource_type: 'raw' }).catch(() => {})
+    await cloudinary.uploader.destroy(publicId, { resource_type: 'image' }).catch(() => {})
   } catch (err) {
     console.error('Cloudinary delete error:', err)
   }
