@@ -26,21 +26,6 @@ app.use('/api/admin',   require('./routes/admin'))
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok', version: '2.0.0', platform: 'Studiwise' }))
 
-app.get('/api/fix-access', async (req, res) => {
-  const { v2: cloudinary } = require('cloudinary')
-  const pool = require('./db')
-  cloudinary.config({ cloud_name: process.env.CLOUDINARY_CLOUD_NAME, api_key: process.env.CLOUDINARY_API_KEY, api_secret: process.env.CLOUDINARY_API_SECRET })
-  const { rows } = await pool.query(`SELECT public_id, title FROM uploads WHERE public_id IS NOT NULL`)
-  const results = []
-  for (const r of rows) {
-    try {
-      await cloudinary.api.update(r.public_id, { resource_type: 'raw', access_mode: 'public' })
-      results.push({ title: r.title, ok: true })
-    } catch(e) { results.push({ title: r.title, ok: false, err: e.message }) }
-  }
-  res.json(results)
-})
-
 app.use((err, req, res, next) => {
   console.error(err)
   res.status(500).json({ error: 'Internal server error' })
