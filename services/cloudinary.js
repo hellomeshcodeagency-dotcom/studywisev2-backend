@@ -10,11 +10,10 @@ cloudinary.config({
 
 const storage = new CloudinaryStorage({
   cloudinary,
-  params: async (req, file) => ({
-    folder:        'studiwise/uploads',
+  params: {
+    folder: 'studiwise/uploads',
     resource_type: 'raw',
-    public_id:     `${Date.now()}-${file.originalname.replace(/\s+/g, '-')}`,
-  }),
+  },
 })
 
 const upload = multer({
