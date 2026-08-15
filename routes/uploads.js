@@ -99,7 +99,7 @@ router.patch('/:id/moderate', authGuard, adminOnly, async (req, res) => {
     if (!['approved', 'rejected'].includes(status)) return res.status(400).json({ error: 'Invalid status' })
 
     const result = await pool.query(`
-      UPDATE uploads SET status = $1, admin_note = $2, approved_at = $3, updated_at = NOW()
+      UPDATE uploads SET status = $1, admin_note = $2, approved_at = $3
       WHERE id = $4 RETURNING *`,
       [status, admin_note || null, status === 'approved' ? new Date() : null, req.params.id])
 
