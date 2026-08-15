@@ -27,10 +27,9 @@ async function uploadToCloudinary(buffer, originalname) {
     const stream = cloudinary.uploader.upload_stream(
       {
         resource_type: 'raw',
-        public_id: `studiwise/uploads/${Date.now()}-${safeName}`,
-        use_filename: true,
-        unique_filename: false,
+        type: 'upload',
         access_mode: 'public',
+        public_id: `studiwise/uploads/${Date.now()}-${safeName}`,
       },
       (error, result) => {
         if (error) return reject(error)
