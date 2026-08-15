@@ -1,6 +1,5 @@
 const cloudinary = require('cloudinary').v2
 const multer     = require('multer')
-const { CloudinaryStorage } = require('multer-storage-cloudinary')
 
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -8,30 +7,32 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 })
 
-const storage = new CloudinaryStorage({
-  cloudinary,
-  params: {
-    folder: 'studiwise/uploads',
-    resource_type: 'raw',
-  },
-})
-
+// Store in memory, upload to Cloudinary manually
 const upload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: 20 * 1024 * 1024 }, // 20MB
   fileFilter: (req, file, cb) => {
-    const allowed = ['application/pdf', 'application/msword',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-      'text/plain']
     const ext = file.originalname.split('.').pop().toLowerCase()
-    if (allowed.includes(file.mimetype) || ['pdf','doc','docx','pptx','txt'].includes(ext)) {
+    if (['pdf','doc','docx','pptx','txt'].includes(ext)) {
       cb(null, true)
     } else {
       cb(new Error('Only PDF, Word, PowerPoint and TXT files are allowed'))
     }
   },
 })
+
+async function uploadToCloudinary(buffer, originalname) {
+  return new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      { resource_type: 'raw', folder: 'studiwise/uploads' },
+      (error, result) => {
+        if (error) reject(error)
+        else resolve(result)
+      }
+    )
+    stream.end(buffer)
+  })
+}
 
 async function deleteFile(publicId) {
   try {
@@ -41,4 +42,4 @@ async function deleteFile(publicId) {
   }
 }
 
-module.exports = { cloudinary, upload, deleteFile }
+module.exports = { cloudinary, upload, uploadToCloudinary, deleteFile }
