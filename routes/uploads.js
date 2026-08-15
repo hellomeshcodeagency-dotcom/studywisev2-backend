@@ -84,13 +84,6 @@ router.get('/:id/file', authGuard, async (req, res) => {
     res.status(500).json({ error: 'Download failed' })
   }
 })
-  try {
-    await pool.query(`UPDATE uploads SET downloads = downloads + 1 WHERE id = $1`, [req.params.id])
-    res.json({ message: 'ok' })
-  } catch (err) {
-    res.status(500).json({ error: 'Server error' })
-  }
-})
 
 // ── ADMIN ROUTES ──────────────────────────────────────
 
