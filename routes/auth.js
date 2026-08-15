@@ -33,15 +33,15 @@ router.post('/register', async (req, res) => {
     const exists = await pool.query(`SELECT id FROM users WHERE email = $1`, [email.toLowerCase()])
     if (exists.rows.length > 0) return res.status(400).json({ error: 'Email already registered' })
 
-    // check if this is the designated admin email
     const isAdmin = email.toLowerCase().trim() === (process.env.ADMIN_EMAIL || '').toLowerCase().trim()
+    const role    = isAdmin ? 'admin' : 'student'
 
     const hash = await bcrypt.hash(password, 12)
     const result = await pool.query(`
-      INSERT INTO users (name, email, password_hash, university_id, faculty_id, department_id, level_id, matric_no, is_admin)
+      INSERT INTO users (name, email, password_hash, role, university_id, faculty_id, department_id, level_id, matric_no)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-      RETURNING id, name, email, is_admin, university_id, faculty_id, department_id, level_id, matric_no, study_streak`,
-      [name.trim(), email.toLowerCase().trim(), hash, university_id, faculty_id, department_id, level_id, matric_no || null, isAdmin])
+      RETURNING id, name, email, role, university_id, faculty_id, department_id, level_id, matric_no, study_streak`,
+      [name.trim(), email.toLowerCase().trim(), hash, role, university_id, faculty_id, department_id, level_id, matric_no || null])
 
     const user  = result.rows[0]
     const token = signToken(user.id)
@@ -59,22 +59,21 @@ router.post('/login', async (req, res) => {
     if (!email || !password) return res.status(400).json({ error: 'Email and password required' })
 
     const result = await pool.query(`
-      SELECT u.id, u.name, u.email, u.password_hash, u.is_admin,
+      SELECT u.id, u.name, u.email, u.password_hash, u.role,
              u.matric_no, u.avatar_url, u.study_streak, u.is_suspended,
              u.university_id, u.faculty_id, u.department_id, u.level_id,
              un.name as university_name, un.short_name as university_short,
-             f.name as faculty_name, f.short_name as faculty_short,
-             d.name as department_name, d.short_name as department_short,
-             l.name as level_name
+             f.name  as faculty_name,    f.short_name  as faculty_short,
+             d.name  as department_name, d.short_name  as department_short,
+             l.name  as level_name
       FROM users u
       LEFT JOIN universities un ON u.university_id = un.id
-      LEFT JOIN faculties f     ON u.faculty_id = f.id
+      LEFT JOIN faculties f     ON u.faculty_id    = f.id
       LEFT JOIN departments d   ON u.department_id = d.id
-      LEFT JOIN levels l        ON u.level_id = l.id
+      LEFT JOIN levels l        ON u.level_id      = l.id
       WHERE u.email = $1`, [email.toLowerCase()])
 
     if (result.rows.length === 0) return res.status(400).json({ error: 'Invalid email or password' })
-
     const user = result.rows[0]
     if (user.is_suspended) return res.status(403).json({ error: 'Account suspended. Contact admin.' })
 
@@ -94,16 +93,16 @@ router.post('/login', async (req, res) => {
 router.get('/me', authGuard, async (req, res) => {
   try {
     const result = await pool.query(`
-      SELECT u.id, u.name, u.email, u.is_admin, u.matric_no, u.avatar_url, u.study_streak, u.created_at,
+      SELECT u.id, u.name, u.email, u.role, u.matric_no, u.avatar_url, u.study_streak, u.created_at,
              un.name as university_name, un.short_name as university_short,
-             f.name as faculty_name, f.short_name as faculty_short,
-             d.name as department_name, d.short_name as department_short,
-             l.name as level_name
+             f.name  as faculty_name,    f.short_name  as faculty_short,
+             d.name  as department_name, d.short_name  as department_short,
+             l.name  as level_name
       FROM users u
       LEFT JOIN universities un ON u.university_id = un.id
-      LEFT JOIN faculties f     ON u.faculty_id = f.id
+      LEFT JOIN faculties f     ON u.faculty_id    = f.id
       LEFT JOIN departments d   ON u.department_id = d.id
-      LEFT JOIN levels l        ON u.level_id = l.id
+      LEFT JOIN levels l        ON u.level_id      = l.id
       WHERE u.id = $1`, [req.user.id])
     res.json({ user: result.rows[0] })
   } catch (err) {
@@ -117,11 +116,9 @@ router.post('/change-password', authGuard, async (req, res) => {
     const { current_password, new_password } = req.body
     if (!current_password || !new_password) return res.status(400).json({ error: 'All fields required' })
     if (new_password.length < 6) return res.status(400).json({ error: 'New password must be at least 6 characters' })
-
     const result = await pool.query(`SELECT password_hash FROM users WHERE id = $1`, [req.user.id])
     const valid  = await bcrypt.compare(current_password, result.rows[0].password_hash)
     if (!valid) return res.status(400).json({ error: 'Current password is incorrect' })
-
     const hash = await bcrypt.hash(new_password, 12)
     await pool.query(`UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2`, [hash, req.user.id])
     res.json({ message: 'Password updated successfully' })
