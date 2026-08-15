@@ -33,6 +33,17 @@ app.use((err, req, res, next) => {
 
 async function start() {
   await initDB()
+  // Clean up duplicate courses (keeping the oldest per level_id+code)
+  await require('./db').query(`
+    DELETE FROM courses WHERE id NOT IN (
+      SELECT DISTINCT ON (level_id, code) id
+      FROM courses ORDER BY level_id, code, created_at ASC
+    )
+  `).catch(() => {})
+  // Add unique constraint if it doesn't exist
+  await require('./db').query(`
+    ALTER TABLE courses ADD CONSTRAINT courses_level_code_unique UNIQUE (level_id, code)
+  `).catch(() => {}) // ignore if already exists
   await seed()
   app.listen(PORT, () => console.log(`Studiwise 2.0 running on port ${PORT}`))
 }
