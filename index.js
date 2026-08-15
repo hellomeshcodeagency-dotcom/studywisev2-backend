@@ -26,28 +26,6 @@ app.use('/api/admin',   require('./routes/admin'))
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok', version: '2.0.0', platform: 'Studiwise' }))
 
-// TEMPORARY — run once to fix old private uploads, then remove
-app.get('/api/fix-cloudinary-access', async (req, res) => {
-  const { v2: cloudinary } = require('cloudinary')
-  const pool = require('./db')
-  cloudinary.config({
-    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-    api_key:    process.env.CLOUDINARY_API_KEY,
-    api_secret: process.env.CLOUDINARY_API_SECRET,
-  })
-  const result = await pool.query(`SELECT id, title, public_id FROM uploads WHERE public_id IS NOT NULL`)
-  const results = []
-  for (const upload of result.rows) {
-    try {
-      await cloudinary.api.update(upload.public_id, { resource_type: 'raw', access_mode: 'public' })
-      results.push({ title: upload.title, status: 'fixed' })
-    } catch (err) {
-      results.push({ title: upload.title, status: 'failed', error: err.message })
-    }
-  }
-  res.json({ total: result.rows.length, results })
-})
-
 app.use((err, req, res, next) => {
   console.error(err)
   res.status(500).json({ error: 'Internal server error' })
