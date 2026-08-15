@@ -39,9 +39,11 @@ async function seed() {
 
     console.log(`IDs — uni:${uniId} fac:${facId} dept:${deptId} level:${levelId}`)
 
-    // Always clean and re-insert courses using the correct levelId
-    await pool.query(`DELETE FROM courses WHERE level_id = $1`, [levelId])
-    console.log('Cleared old courses')
+    // Wipe ALL courses in the entire DB then re-insert cleanly
+    await pool.query(`DELETE FROM courses`)
+    // Also clean up duplicate levels (keep only the one for this department)
+    await pool.query(`DELETE FROM levels WHERE department_id = $1 AND id != $2`, [deptId, levelId])
+    console.log('Cleared all courses and duplicate levels')
 
     const semester1 = [
       { code:'PHY 101', title:'General Physics I (Mechanics & Properties of Matter)', credit_units:3, description:'An introduction to classical mechanics, including kinematics, dynamics, work, energy, momentum, and properties of matter.', objectives:['Understand Newtonian mechanics','Apply laws of motion to real-world problems','Understand properties and states of matter'], outline:['Units and Measurements','Kinematics','Newton\'s Laws of Motion','Work, Energy and Power','Momentum and Collisions','Circular Motion','Gravitation','Properties of Matter','Elasticity','Fluid Mechanics'], textbooks:['University Physics by Young & Freedman','Physics for Scientists and Engineers by Serway','Fundamentals of Physics by Halliday & Resnick'] },
