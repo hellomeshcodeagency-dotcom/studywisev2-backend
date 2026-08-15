@@ -1,5 +1,5 @@
-const cloudinary = require('cloudinary').v2
-const multer     = require('multer')
+const { v2: cloudinary } = require('cloudinary')
+const multer = require('multer')
 
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -7,10 +7,10 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 })
 
-// Store in memory, upload to Cloudinary manually
+// Memory storage — no Cloudinary involvement at multer stage
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 20 * 1024 * 1024 }, // 20MB
+  limits: { fileSize: 20 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     const ext = file.originalname.split('.').pop().toLowerCase()
     if (['pdf','doc','docx','pptx','txt'].includes(ext)) {
@@ -26,8 +26,8 @@ async function uploadToCloudinary(buffer, originalname) {
     const stream = cloudinary.uploader.upload_stream(
       { resource_type: 'raw', folder: 'studiwise/uploads' },
       (error, result) => {
-        if (error) reject(error)
-        else resolve(result)
+        if (error) return reject(error)
+        resolve(result)
       }
     )
     stream.end(buffer)
