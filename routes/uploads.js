@@ -65,13 +65,26 @@ router.get('/approved', authGuard, async (req, res) => {
   }
 })
 
-// PATCH /api/uploads/:id/download — increment download count
-router.patch('/:id/download', authGuard, async (req, res) => {
+// GET /api/uploads/:id/download — generate signed URL and redirect
+router.get('/:id/download', authGuard, async (req, res) => {
   try {
+    const result = await pool.query(`SELECT file_url, public_id, title FROM uploads WHERE id = $1`, [req.params.id])
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Not found' })
     await pool.query(`UPDATE uploads SET downloads = downloads + 1 WHERE id = $1`, [req.params.id])
-    res.json({ message: 'ok' })
+    const { v2: cloudinary } = require('cloudinary')
+    const { public_id, file_url, title } = result.rows[0]
+    if (public_id) {
+      const signedUrl = cloudinary.utils.private_download_url(public_id, null, {
+        resource_type: 'raw',
+        expires_at: Math.floor(Date.now() / 1000) + 300, // 5 min
+        attachment: true,
+      })
+      return res.redirect(signedUrl)
+    }
+    res.redirect(file_url)
   } catch (err) {
-    res.status(500).json({ error: 'Server error' })
+    console.error('Download error:', err)
+    res.status(500).json({ error: 'Download failed' })
   }
 })
 
