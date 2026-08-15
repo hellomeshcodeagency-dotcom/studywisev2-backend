@@ -1,5 +1,6 @@
 const { v2: cloudinary } = require('cloudinary')
 const multer = require('multer')
+const { CloudinaryStorage } = require('multer-storage-cloudinary')
 
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -7,8 +8,17 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 })
 
+// Use CloudinaryStorage with unsigned preset
+const storage = new CloudinaryStorage({
+  cloudinary,
+  params: {
+    upload_preset: 'ml_default',
+    resource_type: 'auto',
+  },
+})
+
 const upload = multer({
-  storage: multer.memoryStorage(),
+  storage,
   limits: { fileSize: 20 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     const ext = file.originalname.split('.').pop().toLowerCase()
@@ -17,26 +27,12 @@ const upload = multer({
   },
 })
 
-async function uploadToCloudinary(buffer, originalname) {
-  return new Promise((resolve, reject) => {
-    const stream = cloudinary.uploader.upload_stream(
-      { resource_type: 'auto' },
-      (error, result) => {
-        if (error) return reject(error)
-        resolve(result)
-      }
-    )
-    stream.end(buffer)
-  })
-}
-
 async function deleteFile(publicId) {
   try {
     await cloudinary.uploader.destroy(publicId, { resource_type: 'raw' }).catch(() => {})
-    await cloudinary.uploader.destroy(publicId, { resource_type: 'image' }).catch(() => {})
   } catch (err) {
     console.error('Cloudinary delete error:', err)
   }
 }
 
-module.exports = { cloudinary, upload, uploadToCloudinary, deleteFile }
+module.exports = { cloudinary, upload, deleteFile }
