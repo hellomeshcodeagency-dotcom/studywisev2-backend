@@ -65,8 +65,25 @@ router.get('/approved', authGuard, async (req, res) => {
   }
 })
 
-// PATCH /api/uploads/:id/download — increment download count
-router.patch('/:id/download', authGuard, async (req, res) => {
+// GET /api/uploads/:id/file — proxy download
+router.get('/:id/file', authGuard, async (req, res) => {
+  try {
+    const result = await pool.query(`SELECT title, file_url FROM uploads WHERE id = $1`, [req.params.id])
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Not found' })
+    const { title, file_url } = result.rows[0]
+    await pool.query(`UPDATE uploads SET downloads = downloads + 1 WHERE id = $1`, [req.params.id])
+    const axios = require('axios')
+    const response = await axios.get(file_url, { responseType: 'stream' })
+    const ext = file_url.split('.').pop().split('?')[0] || 'pdf'
+    const filename = `${title.replace(/[^a-z0-9]/gi, '-')}.${ext}`
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`)
+    res.setHeader('Content-Type', response.headers['content-type'] || 'application/octet-stream')
+    response.data.pipe(res)
+  } catch (err) {
+    console.error('Download error:', err)
+    res.status(500).json({ error: 'Download failed' })
+  }
+})
   try {
     await pool.query(`UPDATE uploads SET downloads = downloads + 1 WHERE id = $1`, [req.params.id])
     res.json({ message: 'ok' })
