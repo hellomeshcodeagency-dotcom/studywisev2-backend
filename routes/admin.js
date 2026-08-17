@@ -75,12 +75,22 @@ router.delete('/users/:id', async (req, res) => {
   }
 })
 
-// GET /api/admin/courses
+// GET /api/admin/courses — now handled by /api/courses/admin/all
 router.get('/courses', async (req, res) => {
   try {
     const result = await pool.query(`
-      SELECT id, code, title, description, credit_units, semester
-      FROM courses ORDER BY semester, code`)
+      SELECT c.*,
+        COALESCE(
+          json_agg(
+            json_build_object('dept_name', d.name, 'level_name', l.name)
+          ) FILTER (WHERE dc.id IS NOT NULL), '[]'
+        ) as departments
+      FROM courses c
+      LEFT JOIN department_courses dc ON dc.course_id = c.id
+      LEFT JOIN departments d ON d.id = dc.department_id
+      LEFT JOIN levels l ON l.id = dc.level_id
+      GROUP BY c.id
+      ORDER BY c.semester, c.code`)
     res.json(result.rows)
   } catch (err) {
     console.error(err)
