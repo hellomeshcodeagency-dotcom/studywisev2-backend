@@ -49,10 +49,10 @@ async function uploadFile(buffer, filename) {
 
   const res = await axios.post(uploadUrl, buffer, {
     headers: {
-      Authorization:     uploadAuthToken,
-      'X-Bz-File-Name':  encodeURIComponent(safeFile),
-      'Content-Type':    mimeType,
-      'Content-Length':  buffer.length,
+      Authorization:       uploadAuthToken,
+      'X-Bz-File-Name':    encodeURIComponent(safeFile),
+      'Content-Type':      mimeType,
+      'Content-Length':    buffer.length,
       'X-Bz-Content-Sha1': sha1,
     },
     maxBodyLength: Infinity,
@@ -60,9 +60,20 @@ async function uploadFile(buffer, filename) {
 
   const fileId   = res.data.fileId
   const fileName = res.data.fileName
-  const url      = `${downloadUrl}/file/${process.env.B2_BUCKET_NAME}/${fileName}`
 
-  return { url, key: fileId }
+  // Generate a signed download URL valid for 7 days
+  const authRes = await axios.post(`${apiUrl}/b2api/v2/b2_get_download_authorization`,
+    {
+      bucketId:               process.env.B2_BUCKET_ID,
+      fileNamePrefix:         fileName,
+      validDurationInSeconds: 604800, // 7 days
+    },
+    { headers: { Authorization: authToken } }
+  )
+
+  const signedUrl = `${downloadUrl}/file/${process.env.B2_BUCKET_NAME}/${fileName}?Authorization=${authRes.data.authorizationToken}`
+
+  return { url: signedUrl, key: `${fileId}|${fileName}` }
 }
 
 async function deleteFile(fileId) {
@@ -75,4 +86,17 @@ async function deleteFile(fileId) {
   }
 }
 
-module.exports = { uploadFile, deleteFile }
+async function getSignedUrl(fileName) {
+  if (!authToken) await authorize()
+  const authRes = await axios.post(`${apiUrl}/b2api/v2/b2_get_download_authorization`,
+    {
+      bucketId:               process.env.B2_BUCKET_ID,
+      fileNamePrefix:         fileName,
+      validDurationInSeconds: 3600, // 1 hour
+    },
+    { headers: { Authorization: authToken } }
+  )
+  return `${downloadUrl}/file/${process.env.B2_BUCKET_NAME}/${fileName}?Authorization=${authRes.data.authorizationToken}`
+}
+
+module.exports = { uploadFile, deleteFile, getSignedUrl }
