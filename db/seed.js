@@ -5,6 +5,13 @@ async function seed() {
   try {
     console.log('Seeding Studiwise 2.0...')
 
+    // Clean up duplicates first (keep newest per unique key)
+    await pool.query(`DELETE FROM universities WHERE id NOT IN (SELECT DISTINCT ON (short_name) id FROM universities ORDER BY short_name, created_at DESC)`).catch(() => {})
+    await pool.query(`DELETE FROM faculties WHERE id NOT IN (SELECT DISTINCT ON (university_id, short_name) id FROM faculties ORDER BY university_id, short_name, created_at DESC)`).catch(() => {})
+    await pool.query(`DELETE FROM departments WHERE id NOT IN (SELECT DISTINCT ON (faculty_id, short_name) id FROM departments ORDER BY faculty_id, short_name, created_at DESC)`).catch(() => {})
+    await pool.query(`DELETE FROM levels WHERE id NOT IN (SELECT DISTINCT ON (department_id, name) id FROM levels ORDER BY department_id, name, created_at DESC)`).catch(() => {})
+    console.log('Cleaned up duplicates')
+
     // ── University ──────────────────────────────────
     const uniExists = await pool.query(`SELECT id FROM universities WHERE short_name = 'FUT Minna'`)
     if (uniExists.rows.length === 0) {
