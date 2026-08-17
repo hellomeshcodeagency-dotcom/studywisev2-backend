@@ -30,8 +30,11 @@ router.post('/register', async (req, res) => {
     if (!university_id || !faculty_id || !department_id || !level_id)
       return res.status(400).json({ error: 'Please select your university, faculty, department and level' })
 
-    const exists = await pool.query(`SELECT id FROM users WHERE email = $1`, [email.toLowerCase()])
-    if (exists.rows.length > 0) return res.status(400).json({ error: 'Email already registered' })
+    const exists = await pool.query(`SELECT id, is_suspended FROM users WHERE email = $1`, [email.toLowerCase()])
+    if (exists.rows.length > 0) {
+      if (exists.rows[0].is_suspended) return res.status(403).json({ error: 'This account has been suspended. Contact admin.' })
+      return res.status(400).json({ error: 'Email already registered' })
+    }
 
     const isAdmin = email.toLowerCase().trim() === (process.env.ADMIN_EMAIL || '').toLowerCase().trim()
     const role    = isAdmin ? 'admin' : 'student'
