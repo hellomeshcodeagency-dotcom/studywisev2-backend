@@ -7,14 +7,15 @@ async function seed() {
 
     // ── University ──────────────────────────────────
     await pool.query(`INSERT INTO universities (name, short_name, location)
-      VALUES ('Federal University of Technology, Minna', 'FUT Minna', 'Minna, Niger State, Nigeria')
-      ON CONFLICT DO NOTHING`)
+      SELECT 'Federal University of Technology, Minna', 'FUT Minna', 'Minna, Niger State, Nigeria'
+      WHERE NOT EXISTS (SELECT 1 FROM universities WHERE short_name = 'FUT Minna')`)
     const { rows: [uni] } = await pool.query(`SELECT id FROM universities WHERE short_name = 'FUT Minna'`)
     const uniId = uni.id
 
     // ── Faculty ──────────────────────────────────────
     await pool.query(`INSERT INTO faculties (university_id, name, short_name, code)
-      VALUES ($1, 'School of Physical Sciences', 'SPS', 'SPS') ON CONFLICT DO NOTHING`, [uniId])
+      SELECT $1, 'School of Physical Sciences', 'SPS', 'SPS'
+      WHERE NOT EXISTS (SELECT 1 FROM faculties WHERE short_name = 'SPS' AND university_id = $1)`, [uniId])
     const { rows: [fac] } = await pool.query(`SELECT id FROM faculties WHERE short_name = 'SPS' AND university_id = $1`, [uniId])
     const facId = fac.id
 
@@ -32,7 +33,9 @@ async function seed() {
 
     for (const d of deptList) {
       await pool.query(`INSERT INTO departments (faculty_id, name, short_name, code)
-        VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING`, [facId, d.name, d.short, d.code])
+        SELECT $1,$2,$3,$4 WHERE NOT EXISTS (
+          SELECT 1 FROM departments WHERE short_name = $3 AND faculty_id = $1
+        )`, [facId, d.name, d.short, d.code])
     }
 
     const { rows: deptRows } = await pool.query(`SELECT id, short_name FROM departments WHERE faculty_id = $1`, [facId])
@@ -41,7 +44,10 @@ async function seed() {
 
     // ── Levels (100L for each department) ────────────
     for (const deptId of Object.values(deptMap)) {
-      await pool.query(`INSERT INTO levels (department_id, name) VALUES ($1, '100L') ON CONFLICT DO NOTHING`, [deptId])
+      await pool.query(`INSERT INTO levels (department_id, name)
+        SELECT $1, '100L' WHERE NOT EXISTS (
+          SELECT 1 FROM levels WHERE department_id = $1 AND name = '100L'
+        )`, [deptId])
     }
 
     const { rows: levelRows } = await pool.query(`
@@ -89,9 +95,8 @@ async function seed() {
     ]
 
     for (const c of courses) {
-      await pool.query(`
-        INSERT INTO courses (code, title, credit_units, semester, description, objectives, outline, textbooks)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT (code) DO NOTHING`,
+      await pool.query(`INSERT INTO courses (code, title, credit_units, semester, description, objectives, outline, textbooks)
+        SELECT $1,$2,$3,$4,$5,$6,$7,$8 WHERE NOT EXISTS (SELECT 1 FROM courses WHERE code = $1)`,
         [c.code, c.title, c.units, c.sem, '', '[]', '[]', '[]'])
     }
     console.log('✅ Global courses seeded')
@@ -127,10 +132,10 @@ async function seed() {
       for (const code of codes) {
         const courseId = courseMap[code]
         if (!courseId) { console.log(`Course not found: ${code}`); continue }
-        await pool.query(`
-          INSERT INTO department_courses (department_id, level_id, course_id)
-          VALUES ($1,$2,$3) ON CONFLICT DO NOTHING`,
-          [deptId, levelId, courseId])
+        await pool.query(`INSERT INTO department_courses (department_id, level_id, course_id)
+          SELECT $1,$2,$3 WHERE NOT EXISTS (
+            SELECT 1 FROM department_courses WHERE department_id = $1 AND level_id = $2 AND course_id = $3
+          )`, [deptId, levelId, courseId])
       }
       console.log(`✅ ${deptShort} courses linked`)
     }
@@ -139,10 +144,9 @@ async function seed() {
     const phyId      = deptMap['PHY']
     const phyLevelId = levelMap[phyId]
     const hash = await bcrypt.hash(process.env.ADMIN_PASSWORD || 'admin123', 12)
-    await pool.query(`
-      INSERT INTO users (name, email, password_hash, role, university_id, faculty_id, department_id, level_id)
-      VALUES ('Admin', $1, $2, 'admin', $3, $4, $5, $6)
-      ON CONFLICT (email) DO NOTHING`,
+    await pool.query(`INSERT INTO users (name, email, password_hash, role, university_id, faculty_id, department_id, level_id)
+      SELECT 'Admin', $1, $2, 'admin', $3, $4, $5, $6
+      WHERE NOT EXISTS (SELECT 1 FROM users WHERE email = $1)`,
       [process.env.ADMIN_EMAIL || 'admin@studiwise.com', hash, uniId, facId, phyId, phyLevelId])
 
     console.log('✅ Seed complete')
