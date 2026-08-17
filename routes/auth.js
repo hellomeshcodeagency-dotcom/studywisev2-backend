@@ -12,9 +12,9 @@ function signToken(id) {
 router.get('/setup', async (req, res) => {
   try {
     const unis  = await pool.query(`SELECT id, name, short_name FROM universities WHERE active = true ORDER BY name`)
-    const facs  = await pool.query(`SELECT id, university_id, name, short_name FROM (SELECT DISTINCT ON (university_id, short_name) * FROM faculties ORDER BY university_id, short_name, created_at DESC) f ORDER BY name`)
-    const depts = await pool.query(`SELECT id, faculty_id, name, short_name FROM (SELECT DISTINCT ON (faculty_id, short_name) * FROM departments ORDER BY faculty_id, short_name, created_at DESC) d ORDER BY name`)
-    const levs  = await pool.query(`SELECT id, department_id, name FROM (SELECT DISTINCT ON (department_id, name) * FROM levels ORDER BY department_id, name, created_at DESC) l ORDER BY name`)
+    const facs  = await pool.query(`SELECT id, university_id, name, short_name FROM faculties ORDER BY name`)
+    const depts = await pool.query(`SELECT id, faculty_id, name, short_name FROM departments ORDER BY name`)
+    const levs  = await pool.query(`SELECT id, department_id, name FROM levels ORDER BY name`)
     res.json({ universities: unis.rows, faculties: facs.rows, departments: depts.rows, levels: levs.rows })
   } catch (err) {
     console.error('Setup error:', err.message)
