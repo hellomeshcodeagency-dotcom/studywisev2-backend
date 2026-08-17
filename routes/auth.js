@@ -81,6 +81,30 @@ router.post('/login', async (req, res) => {
     if (!valid) return res.status(400).json({ error: 'Invalid email or password' })
 
     delete user.password_hash
+
+    // Auto-fix level_id if it doesn't match current department levels
+    if (user.department_id) {
+      const levelCheck = await pool.query(
+        `SELECT id FROM levels WHERE department_id = $1 AND id = $2`,
+        [user.department_id, user.level_id]
+      )
+      if (levelCheck.rows.length === 0) {
+        // level_id is stale — find the correct one by name
+        const correctLevel = await pool.query(
+          `SELECT l.id FROM levels l
+           JOIN levels old ON old.id = $1
+           WHERE l.department_id = $2 AND l.name = old.name
+           LIMIT 1`,
+          [user.level_id, user.department_id]
+        )
+        if (correctLevel.rows.length > 0) {
+          const newLevelId = correctLevel.rows[0].id
+          await pool.query(`UPDATE users SET level_id = $1 WHERE id = $2`, [newLevelId, user.id])
+          user.level_id = newLevelId
+        }
+      }
+    }
+
     const token = signToken(user.id)
     res.json({ token, user })
   } catch (err) {
