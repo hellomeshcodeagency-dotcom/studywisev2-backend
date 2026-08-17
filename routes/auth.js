@@ -11,10 +11,10 @@ function signToken(id) {
 // GET /api/auth/setup
 router.get('/setup', async (req, res) => {
   try {
-    const unis  = await pool.query(`SELECT id, name, short_name FROM universities WHERE active = true ORDER BY name`)
-    const facs  = await pool.query(`SELECT id, university_id, name, short_name FROM faculties ORDER BY name`)
-    const depts = await pool.query(`SELECT id, faculty_id, name, short_name FROM departments ORDER BY name`)
-    const levs  = await pool.query(`SELECT id, department_id, name FROM levels ORDER BY name`)
+    const unis  = await pool.query(`SELECT DISTINCT ON (short_name) id, name, short_name FROM universities WHERE active = true ORDER BY short_name, name`)
+    const facs  = await pool.query(`SELECT DISTINCT ON (university_id, short_name) id, university_id, name, short_name FROM faculties ORDER BY university_id, short_name, name`)
+    const depts = await pool.query(`SELECT DISTINCT ON (faculty_id, short_name) id, faculty_id, name, short_name FROM departments ORDER BY faculty_id, short_name, name`)
+    const levs  = await pool.query(`SELECT DISTINCT ON (department_id, name) id, department_id, name FROM levels ORDER BY department_id, name`)
     res.json({ universities: unis.rows, faculties: facs.rows, departments: depts.rows, levels: levs.rows })
   } catch (err) {
     res.status(500).json({ error: 'Server error' })
