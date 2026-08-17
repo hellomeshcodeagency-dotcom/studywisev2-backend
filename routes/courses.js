@@ -7,7 +7,7 @@ router.get('/', authGuard, async (req, res) => {
   try {
     const { department_id, level_id } = req.user
     const result = await pool.query(`
-      SELECT c.*, dc.id as dc_id
+      SELECT DISTINCT c.*
       FROM courses c
       JOIN department_courses dc ON dc.course_id = c.id
       WHERE dc.department_id = $1 AND dc.level_id = $2 AND c.active = true
