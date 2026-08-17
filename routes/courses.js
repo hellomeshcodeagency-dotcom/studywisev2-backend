@@ -6,13 +6,25 @@ const { authGuard, adminOnly } = require('../middleware/authGuard')
 router.get('/', authGuard, async (req, res) => {
   try {
     const { department_id, level_id } = req.user
+
+    // Find the correct level for this department (handles stale level_id)
+    const levelRes = await pool.query(
+      `SELECT l.id FROM levels l
+       WHERE l.department_id = $1
+       AND (l.id = $2 OR l.name = (SELECT name FROM levels WHERE id = $2 LIMIT 1))
+       LIMIT 1`,
+      [department_id, level_id]
+    )
+    const correctLevelId = levelRes.rows[0]?.id || level_id
+
     const result = await pool.query(`
       SELECT DISTINCT c.*
       FROM courses c
       JOIN department_courses dc ON dc.course_id = c.id
       WHERE dc.department_id = $1 AND dc.level_id = $2 AND c.active = true
       ORDER BY c.semester, c.code`,
-      [department_id, level_id])
+      [department_id, correctLevelId])
+
     res.json({ courses: result.rows })
   } catch (err) {
     console.error(err)
