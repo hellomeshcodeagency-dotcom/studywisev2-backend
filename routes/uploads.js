@@ -2,7 +2,7 @@ const router = require('express').Router()
 const multer = require('multer')
 const pool   = require('../db')
 const { authGuard, adminOnly } = require('../middleware/authGuard')
-const { uploadFile, deleteFile } = require('../services/storage')
+const { uploadFile, deleteFile, getSignedUrl } = require('../services/storage')
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -76,11 +76,19 @@ router.get('/approved', authGuard, async (req, res) => {
 // GET /api/uploads/:id/download
 router.get('/:id/download', authGuard, async (req, res) => {
   try {
-    const result = await pool.query(`SELECT file_url FROM uploads WHERE id = $1`, [req.params.id])
+    const result = await pool.query(`SELECT file_url, public_id FROM uploads WHERE id = $1`, [req.params.id])
     if (result.rows.length === 0) return res.status(404).json({ error: 'Not found' })
     await pool.query(`UPDATE uploads SET downloads = downloads + 1 WHERE id = $1`, [req.params.id])
+    const { public_id } = result.rows[0]
+    // public_id stored as "fileId|fileName"
+    const fileName = public_id?.includes('|') ? public_id.split('|')[1] : null
+    if (fileName) {
+      const signedUrl = await getSignedUrl(fileName)
+      return res.redirect(signedUrl)
+    }
     res.redirect(result.rows[0].file_url)
   } catch (err) {
+    console.error('Download error:', err.message)
     res.status(500).json({ error: 'Download failed' })
   }
 })
