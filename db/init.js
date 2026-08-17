@@ -14,30 +14,45 @@ async function initDB() {
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       university_id UUID NOT NULL REFERENCES universities(id) ON DELETE CASCADE,
       name VARCHAR(200) NOT NULL, short_name VARCHAR(50) NOT NULL,
-      code VARCHAR(20), created_at TIMESTAMPTZ DEFAULT NOW())`)
+      code VARCHAR(20), created_at TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE(university_id, short_name))`)
 
     await pool.query(`CREATE TABLE IF NOT EXISTS departments (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       faculty_id UUID NOT NULL REFERENCES faculties(id) ON DELETE CASCADE,
       name VARCHAR(200) NOT NULL, short_name VARCHAR(50) NOT NULL,
-      code VARCHAR(20), created_at TIMESTAMPTZ DEFAULT NOW())`)
+      code VARCHAR(20), created_at TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE(faculty_id, short_name))`)
 
     await pool.query(`CREATE TABLE IF NOT EXISTS levels (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       department_id UUID NOT NULL REFERENCES departments(id) ON DELETE CASCADE,
-      name VARCHAR(20) NOT NULL, created_at TIMESTAMPTZ DEFAULT NOW())`)
+      name VARCHAR(20) NOT NULL, created_at TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE(department_id, name))`)
 
+    // Global courses — not tied to any level or department
     await pool.query(`CREATE TABLE IF NOT EXISTS courses (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      level_id UUID NOT NULL REFERENCES levels(id) ON DELETE CASCADE,
-      code VARCHAR(20) NOT NULL, title VARCHAR(300) NOT NULL,
+      code VARCHAR(20) NOT NULL,
+      title VARCHAR(300) NOT NULL,
       credit_units INTEGER NOT NULL DEFAULT 2,
       semester INTEGER NOT NULL CHECK (semester IN (1,2)),
       description TEXT, lecturer VARCHAR(200),
-      objectives JSONB DEFAULT '[]', outline JSONB DEFAULT '[]',
-      textbooks JSONB DEFAULT '[]', active BOOLEAN DEFAULT true,
+      objectives JSONB DEFAULT '[]',
+      outline JSONB DEFAULT '[]',
+      textbooks JSONB DEFAULT '[]',
+      active BOOLEAN DEFAULT true,
       created_at TIMESTAMPTZ DEFAULT NOW(),
-      UNIQUE(level_id, code))`)
+      UNIQUE(code))`)
+
+    // Junction table: which courses belong to which department+level
+    await pool.query(`CREATE TABLE IF NOT EXISTS department_courses (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      department_id UUID NOT NULL REFERENCES departments(id) ON DELETE CASCADE,
+      level_id UUID NOT NULL REFERENCES levels(id) ON DELETE CASCADE,
+      course_id UUID NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE(department_id, level_id, course_id))`)
 
     await pool.query(`CREATE TABLE IF NOT EXISTS users (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -97,7 +112,14 @@ async function initDB() {
       created_at TIMESTAMPTZ DEFAULT NOW(),
       UNIQUE(user_id, resource_type, resource_id))`)
 
-    await pool.query(`CREATE INDEX IF NOT EXISTS idx_courses_level  ON courses(level_id)`)
+    // Migration: run once to move existing level_id courses to new schema
+    await pool.query(`
+      ALTER TABLE courses DROP COLUMN IF EXISTS level_id
+    `).catch(() => {})
+
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_dept_courses_dept  ON department_courses(department_id)`)
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_dept_courses_level ON department_courses(level_id)`)
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_dept_courses_course ON department_courses(course_id)`)
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_uploads_course ON uploads(course_id)`)
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_uploads_status ON uploads(status)`)
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_uploads_user   ON uploads(user_id)`)
