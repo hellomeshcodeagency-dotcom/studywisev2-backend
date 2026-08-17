@@ -1,40 +1,4 @@
-const FormData = require('form-data')
 const axios = require('axios')
-
-async function uploadFile(buffer, filename) {
-  // Get presigned URL from uploadthing
-  const mimeType = getMimeType(filename)
-  
-  const presignRes = await axios.post(
-    'https://api.uploadthing.com/v6/uploadFiles',
-    {
-      files: [{ name: filename, size: buffer.length, type: mimeType }],
-      acl: 'public-read',
-    },
-    {
-      headers: {
-        'x-uploadthing-api-key': process.env.UPLOADTHING_SECRET,
-        'Content-Type': 'application/json',
-      },
-    }
-  )
-
-  const fileData = presignRes.data.data[0]
-  
-  // Upload to the presigned URL
-  const form = new FormData()
-  Object.entries(fileData.fields || {}).forEach(([k, v]) => form.append(k, v))
-  form.append('file', buffer, { filename, contentType: mimeType })
-  
-  await axios.post(fileData.url, form, {
-    headers: form.getHeaders(),
-  })
-
-  return {
-    url: fileData.fileUrl,
-    key: fileData.key,
-  }
-}
 
 function getMimeType(filename) {
   const ext = filename.split('.').pop().toLowerCase()
@@ -48,11 +12,52 @@ function getMimeType(filename) {
   return types[ext] || 'application/octet-stream'
 }
 
+async function uploadFile(buffer, filename) {
+  const mimeType = getMimeType(filename)
+
+  // Step 1: Request presigned URLs
+  const presignRes = await axios.post(
+    'https://uploadthing.com/api/uploadFiles',
+    {
+      files: [{ name: filename, size: buffer.length, type: mimeType }],
+    },
+    {
+      headers: {
+        'X-Uploadthing-Api-Key': process.env.UPLOADTHING_SECRET,
+        'X-Uploadthing-Version': '6.13.2',
+        'Content-Type': 'application/json',
+      },
+    }
+  )
+
+  console.log('Presign response:', JSON.stringify(presignRes.data))
+
+  const fileData = presignRes.data.data?.[0] || presignRes.data[0]
+
+  // Step 2: Upload file to presigned URL
+  const FormData = require('form-data')
+  const form = new FormData()
+  if (fileData.fields) {
+    Object.entries(fileData.fields).forEach(([k, v]) => form.append(k, v))
+  }
+  form.append('file', buffer, { filename, contentType: mimeType })
+
+  await axios.post(fileData.url || fileData.presignedUrl, form, {
+    headers: form.getHeaders(),
+    maxBodyLength: Infinity,
+  })
+
+  return {
+    url: fileData.fileUrl || fileData.ufsUrl,
+    key: fileData.key,
+  }
+}
+
 async function deleteFile(keys) {
   try {
     const keyArray = Array.isArray(keys) ? keys : [keys]
-    await axios.delete('https://api.uploadthing.com/v6/files', {
-      headers: { 'x-uploadthing-api-key': process.env.UPLOADTHING_SECRET },
+    await axios.delete('https://uploadthing.com/api/deleteFiles', {
+      headers: { 'X-Uploadthing-Api-Key': process.env.UPLOADTHING_SECRET },
       data: { fileKeys: keyArray },
     })
   } catch (err) {
