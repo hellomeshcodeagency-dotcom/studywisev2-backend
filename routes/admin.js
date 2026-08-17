@@ -51,12 +51,17 @@ router.get('/users', async (req, res) => {
   }
 })
 
-// PATCH /api/admin/users/:id — toggle admin role
+// PATCH /api/admin/users/:id — toggle admin role or suspend
 router.patch('/users/:id', async (req, res) => {
   try {
-    const { is_admin } = req.body
-    const role = is_admin ? 'admin' : 'student'
-    await pool.query(`UPDATE users SET role = $1 WHERE id = $2`, [role, req.params.id])
+    const { is_admin, is_suspended } = req.body
+    if (is_admin !== undefined) {
+      const role = is_admin ? 'admin' : 'student'
+      await pool.query(`UPDATE users SET role = $1 WHERE id = $2`, [role, req.params.id])
+    }
+    if (is_suspended !== undefined) {
+      await pool.query(`UPDATE users SET is_suspended = $1 WHERE id = $2`, [is_suspended, req.params.id])
+    }
     res.json({ message: 'User updated' })
   } catch (err) {
     console.error(err)
