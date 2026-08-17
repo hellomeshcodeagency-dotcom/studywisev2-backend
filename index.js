@@ -33,20 +33,52 @@ app.get('/api/health', (req, res) => res.json({ status: 'ok', version: '2.0.0', 
 app.get('/api/cleanup-duplicates', async (req, res) => {
   const pool = require('./db')
   try {
-    // Keep only 1 university (newest)
-    await pool.query(`DELETE FROM universities WHERE id NOT IN (SELECT id FROM universities ORDER BY created_at DESC LIMIT 1)`)
-    // Keep only 1 faculty per short_name
-    await pool.query(`DELETE FROM faculties WHERE id NOT IN (SELECT DISTINCT ON (short_name) id FROM faculties ORDER BY short_name, created_at DESC)`)
-    // Keep only 1 department per short_name
-    await pool.query(`DELETE FROM departments WHERE id NOT IN (SELECT DISTINCT ON (short_name) id FROM departments ORDER BY short_name, created_at DESC)`)
-    // Keep only 1 level per department+name
-    await pool.query(`DELETE FROM levels WHERE id NOT IN (SELECT DISTINCT ON (department_id, name) id FROM levels ORDER BY department_id, name, created_at DESC)`)
+    // Get the one university to keep (newest)
+    const keepUni = await pool.query(`SELECT id FROM universities ORDER BY created_at DESC LIMIT 1`)
+    const keepUniId = keepUni.rows[0].id
+
+    // Point all users to the correct university
+    await pool.query(`UPDATE users SET university_id = $1`, [keepUniId])
+
+    // Delete duplicate universities
+    await pool.query(`DELETE FROM universities WHERE id != $1`, [keepUniId])
+
+    // Get the one faculty to keep per short_name (newest)
+    const keepFacs = await pool.query(`SELECT DISTINCT ON (short_name) id, short_name FROM faculties ORDER BY short_name, created_at DESC`)
+    const keepFacIds = keepFacs.rows.map(r => r.id)
+
+    // Point users to correct faculty
+    for (const fac of keepFacs.rows) {
+      await pool.query(`UPDATE users SET faculty_id = $1 WHERE faculty_id IN (SELECT id FROM faculties WHERE short_name = $2 AND id != $1)`, [fac.id, fac.short_name])
+    }
+    await pool.query(`DELETE FROM faculties WHERE id != ALL($1::uuid[])`, [keepFacIds])
+
+    // Get departments to keep per short_name (newest)
+    const keepDepts = await pool.query(`SELECT DISTINCT ON (short_name) id, short_name FROM departments ORDER BY short_name, created_at DESC`)
+    const keepDeptIds = keepDepts.rows.map(r => r.id)
+
+    // Point users to correct department
+    for (const dept of keepDepts.rows) {
+      await pool.query(`UPDATE users SET department_id = $1 WHERE department_id IN (SELECT id FROM departments WHERE short_name = $2 AND id != $1)`, [dept.id, dept.short_name])
+    }
+    await pool.query(`DELETE FROM departments WHERE id != ALL($1::uuid[])`, [keepDeptIds])
+
+    // Get levels to keep per department+name (newest)
+    const keepLevels = await pool.query(`SELECT DISTINCT ON (department_id, name) id, department_id, name FROM levels ORDER BY department_id, name, created_at DESC`)
+    const keepLevelIds = keepLevels.rows.map(r => r.id)
+
+    // Point users to correct level
+    for (const lev of keepLevels.rows) {
+      await pool.query(`UPDATE users SET level_id = $1 WHERE level_id IN (SELECT id FROM levels WHERE department_id = $2 AND name = $3 AND id != $1)`, [lev.id, lev.department_id, lev.name])
+    }
+    await pool.query(`DELETE FROM levels WHERE id != ALL($1::uuid[])`, [keepLevelIds])
+
     // Report
     const u = await pool.query(`SELECT COUNT(*) FROM universities`)
     const f = await pool.query(`SELECT COUNT(*) FROM faculties`)
     const d = await pool.query(`SELECT COUNT(*) FROM departments`)
     const l = await pool.query(`SELECT COUNT(*) FROM levels`)
-    res.json({ universities: u.rows[0].count, faculties: f.rows[0].count, departments: d.rows[0].count, levels: l.rows[0].count })
+    res.json({ message: 'Cleanup done', universities: u.rows[0].count, faculties: f.rows[0].count, departments: d.rows[0].count, levels: l.rows[0].count })
   } catch (err) {
     res.status(500).json({ error: err.message })
   }
