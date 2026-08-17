@@ -14,54 +14,62 @@ function getMimeType(filename) {
 
 async function uploadFile(buffer, filename) {
   const mimeType = getMimeType(filename)
+  const apiKey = process.env.UPLOADTHING_SECRET
 
-  // Step 1: Request presigned URLs
-  const presignRes = await axios.post(
-    'https://uploadthing.com/api/uploadFiles',
+  // Step 1: Get presigned URL
+  const presignRes = await axios.put(
+    'https://api.uploadthing.com/v6/prepareUpload',
     {
       files: [{ name: filename, size: buffer.length, type: mimeType }],
+      routeConfig: { blob: { maxFileSize: '20MB', maxFileCount: 1 } },
     },
     {
       headers: {
-        'X-Uploadthing-Api-Key': process.env.UPLOADTHING_SECRET,
-        'X-Uploadthing-Version': '6.13.2',
+        'x-uploadthing-api-key': apiKey,
         'Content-Type': 'application/json',
       },
     }
   )
 
-  console.log('Presign response:', JSON.stringify(presignRes.data))
+  console.log('Presign:', JSON.stringify(presignRes.data).substring(0, 300))
 
-  const fileData = presignRes.data.data?.[0] || presignRes.data[0]
+  const fileInfo = Array.isArray(presignRes.data) ? presignRes.data[0] : presignRes.data?.data?.[0]
 
-  // Step 2: Upload file to presigned URL
+  // Step 2: Upload to presigned URL
   const FormData = require('form-data')
   const form = new FormData()
-  if (fileData.fields) {
-    Object.entries(fileData.fields).forEach(([k, v]) => form.append(k, v))
+  if (fileInfo.fields) {
+    Object.entries(fileInfo.fields).forEach(([k, v]) => form.append(k, v))
   }
   form.append('file', buffer, { filename, contentType: mimeType })
 
-  await axios.post(fileData.url || fileData.presignedUrl, form, {
+  await axios.post(fileInfo.url, form, {
     headers: form.getHeaders(),
     maxBodyLength: Infinity,
   })
 
+  // Step 3: Confirm upload
+  await axios.post(
+    'https://api.uploadthing.com/v6/completeMultipart',
+    { fileKey: fileInfo.key, uploadId: fileInfo.uploadId, etags: [] },
+    { headers: { 'x-uploadthing-api-key': apiKey } }
+  ).catch(() => {})
+
   return {
-    url: fileData.fileUrl || fileData.ufsUrl,
-    key: fileData.key,
+    url: fileInfo.fileUrl || fileInfo.ufsUrl || `https://utfs.io/f/${fileInfo.key}`,
+    key: fileInfo.key,
   }
 }
 
 async function deleteFile(keys) {
   try {
     const keyArray = Array.isArray(keys) ? keys : [keys]
-    await axios.delete('https://uploadthing.com/api/deleteFiles', {
-      headers: { 'X-Uploadthing-Api-Key': process.env.UPLOADTHING_SECRET },
+    await axios.delete('https://api.uploadthing.com/v6/files', {
+      headers: { 'x-uploadthing-api-key': process.env.UPLOADTHING_SECRET },
       data: { fileKeys: keyArray },
     })
   } catch (err) {
-    console.error('Uploadthing delete error:', err.message)
+    console.error('Delete error:', err.message)
   }
 }
 
