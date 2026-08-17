@@ -2,7 +2,7 @@ const router = require('express').Router()
 const multer = require('multer')
 const pool   = require('../db')
 const { authGuard, adminOnly } = require('../middleware/authGuard')
-const { uploadFile, deleteFile } = require('../services/uploadthing')
+const { uploadFile, deleteFile } = require('../services/storage')
 
 const upload = multer({
   storage: multer.memoryStorage(),
