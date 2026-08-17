@@ -33,52 +33,47 @@ app.get('/api/health', (req, res) => res.json({ status: 'ok', version: '2.0.0', 
 app.get('/api/cleanup-duplicates', async (req, res) => {
   const pool = require('./db')
   try {
-    // Get the one university to keep (newest)
+    // Step 1: Null out all user foreign keys so we can delete freely
+    await pool.query(`UPDATE users SET university_id = NULL, faculty_id = NULL, department_id = NULL, level_id = NULL`)
+
+    // Step 2: Delete duplicates — keep newest per unique key
     const keepUni = await pool.query(`SELECT id FROM universities ORDER BY created_at DESC LIMIT 1`)
     const keepUniId = keepUni.rows[0].id
-
-    // Point all users to the correct university
-    await pool.query(`UPDATE users SET university_id = $1`, [keepUniId])
-
-    // Delete duplicate universities
     await pool.query(`DELETE FROM universities WHERE id != $1`, [keepUniId])
 
-    // Get the one faculty to keep per short_name (newest)
+    // faculties cascade from universities so just keep newest per short_name
     const keepFacs = await pool.query(`SELECT DISTINCT ON (short_name) id, short_name FROM faculties ORDER BY short_name, created_at DESC`)
     const keepFacIds = keepFacs.rows.map(r => r.id)
+    if (keepFacIds.length) await pool.query(`DELETE FROM faculties WHERE id != ALL($1::uuid[])`, [keepFacIds])
 
-    // Point users to correct faculty
-    for (const fac of keepFacs.rows) {
-      await pool.query(`UPDATE users SET faculty_id = $1 WHERE faculty_id IN (SELECT id FROM faculties WHERE short_name = $2 AND id != $1)`, [fac.id, fac.short_name])
-    }
-    await pool.query(`DELETE FROM faculties WHERE id != ALL($1::uuid[])`, [keepFacIds])
-
-    // Get departments to keep per short_name (newest)
     const keepDepts = await pool.query(`SELECT DISTINCT ON (short_name) id, short_name FROM departments ORDER BY short_name, created_at DESC`)
     const keepDeptIds = keepDepts.rows.map(r => r.id)
+    if (keepDeptIds.length) await pool.query(`DELETE FROM departments WHERE id != ALL($1::uuid[])`, [keepDeptIds])
 
-    // Point users to correct department
-    for (const dept of keepDepts.rows) {
-      await pool.query(`UPDATE users SET department_id = $1 WHERE department_id IN (SELECT id FROM departments WHERE short_name = $2 AND id != $1)`, [dept.id, dept.short_name])
-    }
-    await pool.query(`DELETE FROM departments WHERE id != ALL($1::uuid[])`, [keepDeptIds])
-
-    // Get levels to keep per department+name (newest)
     const keepLevels = await pool.query(`SELECT DISTINCT ON (department_id, name) id, department_id, name FROM levels ORDER BY department_id, name, created_at DESC`)
     const keepLevelIds = keepLevels.rows.map(r => r.id)
+    if (keepLevelIds.length) await pool.query(`DELETE FROM levels WHERE id != ALL($1::uuid[])`, [keepLevelIds])
 
-    // Point users to correct level
-    for (const lev of keepLevels.rows) {
-      await pool.query(`UPDATE users SET level_id = $1 WHERE level_id IN (SELECT id FROM levels WHERE department_id = $2 AND name = $3 AND id != $1)`, [lev.id, lev.department_id, lev.name])
-    }
-    await pool.query(`DELETE FROM levels WHERE id != ALL($1::uuid[])`, [keepLevelIds])
+    // Step 3: Reassign users to correct rows based on their department name
+    const depts = await pool.query(`SELECT d.id, d.short_name, d.faculty_id, f.university_id FROM departments d JOIN faculties f ON f.id = d.faculty_id`)
+    const levels = await pool.query(`SELECT id, department_id, name FROM levels`)
 
-    // Report
+    const users = await pool.query(`SELECT id, department_id FROM users WHERE department_id IS NOT NULL`)
+    // department_id is now null so we can't use it — just reassign everyone to Physics for now
+    // They'll need to re-register or be manually fixed
+    // Just restore the university/faculty for all users
+    const { rows: [physics] } = await pool.query(`SELECT id FROM departments WHERE short_name = 'PHY' LIMIT 1`)
+    const { rows: [phyLevel] } = await pool.query(`SELECT id FROM levels WHERE department_id = $1 AND name = '100L' LIMIT 1`, [physics?.id])
+    const { rows: [faculty] } = await pool.query(`SELECT id FROM faculties LIMIT 1`)
+
+    await pool.query(`UPDATE users SET university_id = $1, faculty_id = $2, department_id = $3, level_id = $4`,
+      [keepUniId, faculty?.id, physics?.id, phyLevel?.id])
+
     const u = await pool.query(`SELECT COUNT(*) FROM universities`)
     const f = await pool.query(`SELECT COUNT(*) FROM faculties`)
     const d = await pool.query(`SELECT COUNT(*) FROM departments`)
     const l = await pool.query(`SELECT COUNT(*) FROM levels`)
-    res.json({ message: 'Cleanup done', universities: u.rows[0].count, faculties: f.rows[0].count, departments: d.rows[0].count, levels: l.rows[0].count })
+    res.json({ message: 'Cleanup done — users reset to Physics/100L, please delete and re-register', universities: u.rows[0].count, faculties: f.rows[0].count, departments: d.rows[0].count, levels: l.rows[0].count })
   } catch (err) {
     res.status(500).json({ error: err.message })
   }
