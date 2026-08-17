@@ -49,11 +49,12 @@ async function uploadFile(buffer, filename) {
 
   const res = await axios.post(uploadUrl, buffer, {
     headers: {
-      Authorization:       uploadAuthToken,
-      'X-Bz-File-Name':    encodeURIComponent(safeFile),
-      'Content-Type':      mimeType,
-      'Content-Length':    buffer.length,
-      'X-Bz-Content-Sha1': sha1,
+      Authorization:               uploadAuthToken,
+      'X-Bz-File-Name':            encodeURIComponent(safeFile),
+      'Content-Type':              mimeType,
+      'Content-Length':            buffer.length,
+      'X-Bz-Content-Sha1':        sha1,
+      'X-Bz-Info-b2-content-disposition': encodeURIComponent(`attachment; filename="${filename}"`),
     },
     maxBodyLength: Infinity,
   })
